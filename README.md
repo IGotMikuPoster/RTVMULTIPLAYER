@@ -10,6 +10,8 @@ This is an experimental community mod and still needs actual gameplay testing. T
 
 Everyone needs a legitimate copy of Road to Vostok, a compatible Metro Mod Loader, and the same multiplayer mod version. The installed game scripts were last checked on 6 September 2026 against the previously audited 0.1.1.3 scripts. Future game updates and other mods may affect compatibility.
 
+When using Steam networking, actual Steam names are only available for players who own a genuine copy of Road to Vostok. Players who cannot be identified through Steam ownership will instead appear as "Vostok Survivor".
+
 ## Features
 
 - Multiplayer menu with Steam hosting, invitations, and direct-address connections.
@@ -25,11 +27,23 @@ These systems are implemented, but are not guaranteed bug-free or compatible wit
 
 ## Connecting
 
-Install a packaged release in the game's `mods` folder and enable it in Metro Mod Loader. Launch the modded game and open **Multiplayer**. For Steam connections, use **Host with Steam** and **Invite Friends**. Steam mode checks ownership of Road to Vostok.
+Install a packaged release in the game's mods folder and enable it in Metro Mod Loader. Launch the modded game and open Multiplayer.
 
-You can also play without using the Steam networking mode, through a reachable direct address. Tailscale or another compatible VPN/relay setup can provide that connection; players must configure it themselves. Direct internet hosting may require UDP port 9058 forwarding, depending on the router and network. The mod does not provide its own relay service.
+## Steam networking
 
-There will be no Spacewar fallback or Steam-emulation support. I do not condone piracy of the game. Direct networking is an alternative connection method, not a replacement for owning the game.
+For Steam connections, use Host with Steam and Invite Friends. Players with a genuine copy of Road to Vostok can be identified by their actual Steam names and Steam ownership can be checked when connecting.
+
+Players who cannot be identified as genuine owners will be displayed as "Vostok Survivor" rather than their Steam name.
+
+## Direct / LAN networking
+
+You can also play without using the Steam networking mode through a reachable direct address. This is the recommended option when Steam networking is unavailable or unsuitable. Tailscale or another compatible VPN/relay setup can provide a virtual LAN connection; players must configure it themselves.
+
+Direct internet hosting may require UDP port 9058 forwarding, depending on the router and network. The mod does not provide its own relay service.
+
+Direct/LAN networking is separate from Steam's ownership and friend-invite system. It can be used as an alternative connection method when Steam networking cannot be used, but the mod is intended for legitimate copies of Road to Vostok.
+
+There will be no Spacewar fallback or Steam-emulation support. I do not condone piracy of the game. But using direct connection through tailscale is a perfect loophole if you do not own a genuine copy of the game. After all, this is a community mod. I wont restrict people from using it just for not buying the game. However it will be a bit harder to set up.
 
 ## Known issues and limitations
 
