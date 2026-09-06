@@ -15,7 +15,7 @@ When using Steam networking, actual Steam names are only available for players w
 ## Features
 
 - Multiplayer menu with Steam hosting, invitations, and direct-address connections.
-- Up to 8 players, Steam names, remote player models, held equipment, and movement animation.
+- Up to 8 players, correct weapon holding animations, every player's footsteps and gunshots are shared. (I will make a normal walking animation if you have no weapons equipped, for now the idle state anim has been implemented.
 - Host-controlled enemies, damage, shared loot, containers, doors, and world state.
 - Group travel voting and group sleep; living players must agree.
 - Downed-player screen and teammate revives: bandages restore 20 HP; Medkit, IFAK, and AFAK restore 100 HP.
