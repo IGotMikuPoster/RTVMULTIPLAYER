@@ -1,6 +1,10 @@
 # kazmer's multiplayer RTV mod
 
-Multiplayer for Road to Vostok, for up to 8 players. Current version: **0.4.17**.
+## ✦ UPDATED FOR 0.4.18
+
+**Improved revives, updated AI ragdoll synchronization, and smoother dropped items. Safe-zone saving and reloading passed isolated local testing.**
+
+Multiplayer for Road to Vostok, for up to 8 players. Current version: **0.4.18**.
 
 Packaged mod versions will be available in the [Releases tab](https://github.com/IGotMikuPoster/RTVMULTIPLAYER/releases). This repository contains source, not an install-ready mod package.
 
@@ -15,10 +19,14 @@ When using Steam networking, actual Steam names are only available for players w
 ## Features
 
 - Multiplayer menu with Steam hosting, invitations, and direct-address connections.
-- Up to 8 players, correct weapon holding animations, every player's footsteps and gunshots are shared. (I will make a normal walking animation if you have no weapons equipped, for now the idle state anim has been implemented.
+- Up to 8 players, visible held weapons, movement animations, shared footsteps and gunshots. Unarmed movement currently uses an idle upper-body pose; proper unarmed walking animations are planned.
 - Host-controlled enemies, damage, shared loot, containers, doors, and world state.
+- Updated client-side AI ragdoll synchronization and smoother dropped-item movement.
 - Group travel voting and group sleep; living players must agree.
-- Downed-player screen and teammate revives: bandages restore 20 HP; Medkit, IFAK, and AFAK restore 100 HP.
+- Downed-player screen and teammate revives:
+  - **Bandages:** restore 20 HP and retain injuries, with 15 seconds of protection from status health drain.
+  - **Medkit, IFAK and AFAK:** restore 100 HP and clear medical debuffs. Survival meters below 20 rise to 20; carry-weight penalties remain.
+  - Attacks, active fire and drowning still cause damage during the bandage grace period.
 - Personal crafting and task rewards, with local character checkpoints tied to player identity and the host's run.
 - Shared placed shelter furniture and storage, personal furniture catalogs, and one furniture editor at a time.
 - Exclusive access to shared containers and traders while another player is using them.
@@ -47,10 +55,13 @@ There will be no Spacewar fallback or Steam-emulation support. I do not condone 
 
 ## Known issues and limitations
 
-- Shelter cabinet access and furniture packing/placement are recent changes. Contents surviving area changes, reconnects, and a host restart still need real multiplayer verification.
+- Shared shelter storage, furniture placement and area changes passed local multiplayer testing with isolated profiles. Safe-zone save/reload retained player inventories and survival stats. Furniture packing with stored contents, interrupted transfers and separate-computer Steam/Tailscale persistence still need further testing.
 - Disconnecting or crashing during furniture packing or placement can lose or duplicate items. Host world saves and client catalog saves are not a single atomic transaction.
-- Character checkpoints are stored locally. They are not a host-backed, cross-PC save service; keep backups on each player's computer.
-- Player weapon grips, attachments, animations, enemy motion, and shot audio need more testing across weapons and network conditions. Arbitrary third-person clothing and persistent bodies across disconnects/restarts are not complete features.
+- Character checkpoints are stored locally, not in a host-backed, cross-PC save service. **Keep backups on each player's computer.**
+- Running two game instances on the same computer requires separate save folders. Otherwise, they can overwrite each other's saves.
+- Updated ragdolls and dropped-item smoothing still need confirmation over real Steam/Tailscale connections, particularly with latency or packet loss.
+- Player weapon grips, attachments, animations, enemy motion and shot audio need more testing across weapons and network conditions.
+- Arbitrary third-person clothing and persistent bodies across disconnects/restarts are not complete features. Returning to a downed body after changing zones passed local testing, but disconnect/restart persistence is separate.
 - Grenade flight/bounces and smoke presentation are not fully synchronized. Exact armor damage and reconnect recovery still need work.
 - Loose objects on furniture must be removed before moving or packing it. Internal furniture storage is limited to 128 entries by the current protocol.
 - Modified clients are not secure inventory proofs. Play with people you trust. Other mods that replace the same game interactions can conflict.
