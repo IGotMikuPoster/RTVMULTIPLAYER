@@ -73,6 +73,7 @@ var _checkpoint_retry_at := 0
 var _group_sleep: Node
 var _shelter: Node
 var _travel_commit_pending := false
+var _return_menu: Node
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -99,6 +100,11 @@ func _ready() -> void:
 	_gameplay.name = "GameplaySync"
 	add_child(_gameplay)
 	_gameplay.configure(_session, self)
+	_return_menu = preload("res://RTVCoop8/gameplay/ReturnToMenu.gd").new()
+	_return_menu.name = "ReturnToMenu"
+	_return_menu.api = self
+	_return_menu.session = _session
+	add_child(_return_menu)
 	_traders = preload("res://RTVCoop8/gameplay/TraderSync.gd").new()
 	_traders.name = "TraderSync"
 	_traders.session = _session
@@ -186,6 +192,8 @@ func _process(delta: float) -> void:
 		return
 	if not _session.is_online():
 		return
+	if _return_menu != null and _return_menu.pending:
+		return
 	if _checkpoint_pending and Time.get_ticks_msec() >= _checkpoint_retry_at and _local_player != null and not _gameplay.has_pending_transfers():
 		_checkpoint_retry_at = Time.get_ticks_msec() + 2000
 		_checkpoint_pending = not _checkpoint_game_state(false)
@@ -237,6 +245,7 @@ func _on_frameworks_ready() -> void:
 	_library.hook("loader-savecharacter-post", _on_character_saved, 800)
 	_group_sleep.register_hooks(_library)
 	_shelter.register_hooks(_library)
+	_return_menu.register_hooks(_library)
 	_library.hook("interface-complete", _on_personal_completion, 90)
 	_library.hook("interface-complete-post", _on_personal_completion_post, 800)
 	var format_save_replace: int = _library.hook("loader-formatsave", _on_format_save_replace, 100)
@@ -571,6 +580,8 @@ func _finish_failed_run() -> void:
 		loader.call("LoadScene", "Menu")
 
 func _on_leave_requested() -> void:
+	if _return_menu != null and _return_menu.pending:
+		return
 	if scene_is_loading():
 		_panel.set_status("Wait for the area to finish loading before leaving", true)
 		return
@@ -799,6 +810,8 @@ func _publish_world_state() -> void:
 	_session.publish_world_state(state)
 
 func _apply_world_state(state: Dictionary) -> void:
+	if _return_menu != null and _return_menu.pending:
+		return
 	if not Protocol.is_valid_world_state(state):
 		return
 	if String(state.map) in ["Menu", "Intro", "Death"]:
