@@ -1,7 +1,7 @@
 extends RefCounted
 
-const PROTOCOL_VERSION := 17
-const MOD_VERSION := "0.4.17"
+const PROTOCOL_VERSION := 18
+const MOD_VERSION := "0.4.18"
 
 static func public_title() -> String:
 	var manifest := ConfigFile.new()
@@ -198,6 +198,7 @@ static func sanitize_player_state(raw: Variant) -> Dictionary:
 	return {
 		"run": String(value.get("run", "")).left(80),
 		"life_revision": maxi(0, int(value.get("life_revision", 0))),
+		"revive_item": String(value.get("revive_item", "")) if value.get("revive_item", "") in ["Bandage", "Bandage_Improvised", "Medkit", "IFAK", "AFAK"] else "",
 		"health": clampf(float(value.get("health", 100.0)), 0.0, 100.0),
 		"downed": bool(value.get("downed", false)),
 		"map": sanitize_map(String(value.get("map", ""))),

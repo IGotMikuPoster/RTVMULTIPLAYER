@@ -2,15 +2,33 @@ extends RefCounted
 
 const MAX_BONES := 128
 
-static func capture(skeleton: Skeleton3D) -> PackedFloat32Array:
+static func capture(skeleton: Skeleton3D, ragdoll := false) -> PackedFloat32Array:
 	var result := PackedFloat32Array()
 	if skeleton == null or skeleton.get_bone_count() > MAX_BONES:
 		return result
+	var poses: Array[Transform3D] = []
 	for index in skeleton.get_bone_count():
-		var pose := skeleton.get_bone_global_pose(index)
+		poses.append(skeleton.get_bone_global_pose(index))
+	if ragdoll:
+		# Physics modifiers can reset the readable skeleton pose after rendering.
+		# Read the actual rigid bodies, removing each body's bone offset.
+		var bodies: Dictionary = {}
+		for body in skeleton.find_children("*", "PhysicalBone3D", true, false):
+			var index: int = body.get_bone_id()
+			if index >= 0 and index < poses.size():
+				bodies[index] = skeleton.global_transform.affine_inverse() * body.global_transform * body.body_offset.affine_inverse()
+		var original := poses.duplicate()
+		for index in poses.size():
+			var parent := skeleton.get_bone_parent(index)
+			if bodies.has(index):
+				poses[index] = bodies[index]
+			elif parent >= 0:
+				poses[index] = poses[parent] * original[parent].affine_inverse() * original[index]
+	for index in skeleton.get_bone_count():
+		var pose := poses[index]
 		var parent := skeleton.get_bone_parent(index)
 		if parent >= 0:
-			pose = skeleton.get_bone_global_pose(parent).affine_inverse() * pose
+			pose = poses[parent].affine_inverse() * pose
 		var q := pose.basis.orthonormalized().get_rotation_quaternion()
 		result.append_array(PackedFloat32Array([pose.origin.x, pose.origin.y, pose.origin.z, q.x, q.y, q.z, q.w]))
 	return result

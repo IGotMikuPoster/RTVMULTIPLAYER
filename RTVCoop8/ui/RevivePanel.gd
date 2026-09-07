@@ -43,6 +43,7 @@ func open(player_name: String, options: Array) -> void:
 	for option in options:
 		var button := Button.new()
 		button.text = "%s — %d HP" % [option.label, option.health]
+		button.tooltip_text = "Clears medical debuffs; survival meters restored to at least 20. Carry weight is unchanged." if option.health >= 100 else "Injuries remain. 15 seconds without status health drain; attacks still hurt."
 		button.pressed.connect(func(): selected.emit(option.item))
 		_options.add_child(button)
 	if options.is_empty():

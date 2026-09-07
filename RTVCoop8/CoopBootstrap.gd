@@ -1214,6 +1214,8 @@ func enter_local_downed_state() -> void:
 		_gameplay.submit_local_state(_local_player.global_position, _current_map())
 	show_gameplay_status("You are down. A teammate can revive you with a bandage or medical kit.", true)
 
+var _revive_grace_until := 0
+
 func apply_authoritative_player_state(state: Dictionary) -> void:
 	if _game_data == null:
 		_game_data = load("res://Resources/GameData.tres")
@@ -1227,8 +1229,15 @@ func apply_authoritative_player_state(state: Dictionary) -> void:
 	_game_data.set("health", float(state.get("health", 100.0)))
 	_game_data.set("isDead", false)
 	if _local_downed:
+		_revive_grace_until = 0
 		_game_data.set("freeze", true)
 	elif was_downed:
+		_revive_grace_until = 0
+		var medical := String(state.get("revive_item", ""))
+		if medical in ["Medkit", "IFAK", "AFAK"]:
+			preload("res://RTVCoop8/core/MedicalRules.gd").clear_debuffs(_game_data)
+		elif medical in ["Bandage", "Bandage_Improvised"]:
+			_revive_grace_until = Time.get_ticks_msec() + 15000
 		if is_instance_valid(_local_player) and String(state.map) == _current_map():
 			_local_player.global_position = Vector3(state.position)
 		_local_body.clear()

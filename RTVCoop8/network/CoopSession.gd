@@ -20,6 +20,7 @@ signal revive_requested(source_peer: int, target_peer: int, medical: String)
 signal revive_result(success: bool, medical: String, detail: String)
 signal ai_state_received(map_name: String, revision: int, entities: Array)
 signal loot_state_received(map_name: String, revision: int, entities: Array)
+signal loot_motion_received(map_name: String, entities: Array)
 signal loot_pickup_requested(source_peer: int, entity_id: String)
 signal loot_grant_received(entity_id: String, slot: Dictionary)
 signal loot_grant_result_requested(source_peer: int, entity_id: String, accepted: bool)
@@ -293,6 +294,7 @@ func broadcast_player_state(peer_id: int, raw_state: Dictionary, advance_revisio
 	player_state_received.emit(peer_id, value.duplicate(true))
 
 func _accept_player_state(peer_id: int, value: Dictionary) -> void:
+	value.erase("revive_item")
 	var previous: Dictionary = _player_states.get(peer_id, {})
 	if not previous.is_empty() and (int(value.get("life_revision", 0)) != int(_player_revisions.get(peer_id, 0)) or bool(previous.downed)):
 		broadcast_player_state(peer_id, previous, false)
@@ -375,6 +377,17 @@ func publish_ai_state(map_name: String, revision: int, entities: Array) -> void:
 func publish_ai_death(map_name: String, revision: int, entity: Dictionary) -> void:
 	if multiplayer.is_server() and Protocol.is_valid_scene(map_name) and var_to_bytes(entity).size() <= 65536:
 		_receive_ai_death.rpc(map_name, maxi(0, revision), entity)
+
+func publish_loot_motion(map_name: String, entities: Array) -> void:
+	if not multiplayer.is_server() or not Protocol.is_valid_scene(map_name):
+		return
+	for start in range(0, mini(entities.size(), 2048), 16):
+		_receive_loot_motion.rpc(map_name, entities.slice(start, start + 16))
+
+@rpc("authority", "call_remote", "unreliable_ordered", 3)
+func _receive_loot_motion(map_name: String, entities: Array) -> void:
+	if not multiplayer.is_server() and Protocol.is_valid_scene(map_name) and entities.size() <= 16:
+		loot_motion_received.emit(map_name, entities)
 
 func publish_loot_state(map_name: String, revision: int, entities: Array) -> void:
 	if not multiplayer.is_server() or not Protocol.is_valid_scene(map_name):

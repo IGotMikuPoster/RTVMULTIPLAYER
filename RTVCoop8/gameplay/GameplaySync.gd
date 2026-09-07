@@ -80,6 +80,7 @@ func configure(session: Node, owner_api: Node) -> void:
 	_session.revive_result.connect(_on_revive_result)
 	_session.ai_state_received.connect(_on_ai_state_received)
 	_session.loot_state_received.connect(_on_loot_state_received)
+	_session.loot_motion_received.connect(_on_loot_motion_received)
 	_session.loot_pickup_requested.connect(_on_loot_pickup_requested)
 	_session.loot_grant_received.connect(_on_loot_grant_received)
 	_session.loot_grant_result_requested.connect(_on_loot_grant_result_requested)
@@ -125,6 +126,7 @@ func register_hooks(library: Variant) -> void:
 		["weaponrig-raycast-post", _on_weapon_raycast_post],
 		["interactor-_physics_process", _on_interactor_physics],
 		["character-death", _on_character_death],
+		["character-health", _on_character_health],
 		["lootsimulation-_ready", _on_loot_simulation_ready],
 		["pickup-_ready-post", _on_pickup_ready_post],
 		["pickup-interact", _on_pickup_interact],
@@ -168,6 +170,7 @@ func _process(delta: float) -> void:
 		if _ai_accumulator >= 1.0 / Protocol.AI_STATE_HZ:
 			_ai_accumulator = fmod(_ai_accumulator, 1.0 / Protocol.AI_STATE_HZ)
 			_publish_ai_state()
+			_publish_loot_motion()
 		_loot_accumulator += delta
 		if _loot_accumulator >= 1.0 / Protocol.LOOT_STATE_HZ:
 			_loot_accumulator = fmod(_loot_accumulator, 1.0 / Protocol.LOOT_STATE_HZ)
@@ -175,6 +178,7 @@ func _process(delta: float) -> void:
 			_publish_door_state()
 	else:
 		_interpolate_client_ai(delta)
+		_interpolate_client_loot(delta)
 
 func reset_scene() -> void:
 	if _revive_panel != null:
@@ -381,6 +385,7 @@ func _on_revive_requested(source_peer: int, target_peer: int, medical: String) -
 	if MedicalRules.revive_health(medical) <= 0.0:
 		return
 	next.health = MedicalRules.revive_health(medical)
+	next["revive_item"] = medical
 	next.downed = false
 	_player_states[target_peer] = next
 	_session.broadcast_player_state(target_peer, next)
@@ -404,6 +409,10 @@ func _on_revive_result(success: bool, medical: String, detail: String) -> void:
 	_medical_item = null
 	_revive_panel.show()
 	_revive_panel.close()
+
+func _on_character_health(_delta: float) -> void:
+	if _session.is_online() and float(_game_data.get("health")) > 0.0 and Time.get_ticks_msec() < int(_owner_api.get("_revive_grace_until")):
+		_library.skip_super()
 
 func _on_character_death() -> void:
 	if _session == null or not _session.is_online():
@@ -527,7 +536,7 @@ func _publish_ai_state() -> void:
 			"health": clampf(float(ai.get("health")), -1000.0, 1000.0),
 			"dead": bool(ai.get("dead")),
 			"state": clampi(int(ai.get("currentState")), 0, 32),
-			"bones": BonePose.capture(ai.get("skeleton") as Skeleton3D),
+			"bones": BonePose.capture(ai.get("skeleton") as Skeleton3D, bool(ai.get("dead"))),
 			"weapon": String(weapon_data.get("file")) if weapon_data != null else "",
 			"weapon_transform": weapon.transform if weapon is Node3D else Transform3D.IDENTITY,
 			"attachments": attachment_keys,
@@ -1103,14 +1112,49 @@ func _on_loot_state_received(map_name: String, _revision: int, entities: Array) 
 		if pickup == null or not is_instance_valid(pickup):
 			pickup = _spawn_client_loot(entity_id, state)
 		if pickup != null:
-			pickup.global_position = Vector3(state.get("position", pickup.global_position))
-			pickup.global_rotation = Vector3(state.get("rotation", pickup.global_rotation))
+			if not pickup.has_meta("coop_loot_target"):
+				pickup.global_position = Vector3(state.position)
+				pickup.global_rotation = Vector3(state.rotation)
+			pickup.set_meta("coop_loot_target", state)
 	for entity_id in _client_loot_nodes.keys():
 		if not seen.has(entity_id):
 			var old: Variant = _client_loot_nodes[entity_id]
 			if is_instance_valid(old):
 				old.queue_free()
 			_client_loot_nodes.erase(entity_id)
+
+func _publish_loot_motion() -> void:
+	var entities: Array = []
+	for pickup in _loot_nodes.values():
+		if not is_instance_valid(pickup):
+			continue
+		var previous: Transform3D = pickup.get_meta("coop_motion_previous", Transform3D.IDENTITY)
+		if not previous.is_equal_approx(pickup.global_transform):
+			pickup.set_meta("coop_motion_previous", pickup.global_transform)
+			entities.append({"id": String(pickup.get_meta("coop_loot_id", "")), "position": pickup.global_position, "rotation": pickup.global_rotation})
+	if not entities.is_empty():
+		_session.publish_loot_motion(_current_map(), entities)
+
+func _on_loot_motion_received(map_name: String, entities: Array) -> void:
+	if map_name != _current_map():
+		return
+	for state in entities:
+		if not state is Dictionary or not _valid_loot_entity(state):
+			continue
+		var pickup := _cached_node(_client_loot_nodes, String(state.id))
+		if pickup != null:
+			pickup.set_meta("coop_loot_target", state)
+
+func _interpolate_client_loot(delta: float) -> void:
+	for pickup in _client_loot_nodes.values():
+		if not is_instance_valid(pickup) or not pickup.has_meta("coop_loot_target"):
+			continue
+		var target: Dictionary = pickup.get_meta("coop_loot_target")
+		var destination := Vector3(target.position)
+		var weight := 1.0 - exp(-delta * 25.0)
+		pickup.global_position = destination if pickup.global_position.distance_to(destination) > 3.0 else pickup.global_position.lerp(destination, weight)
+		var rotation := Quaternion.from_euler(Vector3(target.rotation))
+		pickup.quaternion = pickup.quaternion.slerp(rotation, weight)
 
 func _confirm_provisional_drop(entity_id: String) -> void:
 	for token in _pending_drops.keys():
@@ -1136,6 +1180,8 @@ func _spawn_client_loot(entity_id: String, state: Dictionary) -> Node3D:
 	pickup.set_meta("coop_loot_id", entity_id)
 	var parent := _loot_root()
 	parent.add_child(pickup)
+	if pickup is RigidBody3D:
+		pickup.freeze = true
 	if pickup.has_method("UpdateAttachments"):
 		pickup.call("UpdateAttachments")
 	_client_loot_nodes[entity_id] = pickup
