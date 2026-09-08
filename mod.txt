@@ -1,7 +1,7 @@
 [mod]
 name="kazmer's multiplayer RTV mod"
 id="rtv_coop_8"
-version="0.5.1"
+version="0.5.2"
 priority=-50
 author="Community contributors"
 

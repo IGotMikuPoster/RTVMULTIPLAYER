@@ -1,7 +1,7 @@
 extends RefCounted
 
 const PROTOCOL_VERSION := 20
-const MOD_VERSION := "0.5.1"
+const MOD_VERSION := "0.5.2"
 
 static func public_title() -> String:
 	var manifest := ConfigFile.new()
