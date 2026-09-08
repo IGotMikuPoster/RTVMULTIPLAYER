@@ -45,6 +45,8 @@ signal shared_snapshot_requested(source_peer: int)
 signal explosion_requested(source_peer: int, map_name: String, position: Vector3, size: float)
 signal explosion_received(map_name: String, event_id: String, position: Vector3, size: float)
 signal footstep_received(peer_id: int, map_name: String, kind: int, surface: String, water: bool, season: int)
+signal ping_requested(source_peer: int, map_name: String, position: Vector3)
+signal ping_received(value: Dictionary)
 signal checkpoint_requested
 
 func request_group_checkpoint() -> void:
@@ -80,6 +82,9 @@ var _run_id := ""
 var _loot_parts: Dictionary = {}
 var _loot_batch_revision := -1
 var _loot_batch_map := ""
+
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 
 func _process(_delta: float) -> void:
 	if multiplayer.multiplayer_peer == null or not multiplayer.is_server():
@@ -187,6 +192,24 @@ func submit_footstep(map_name: String, kind: int, surface: String, water: bool, 
 		_relay_footstep(1, map_name, kind, surface, water, season)
 	else:
 		_submit_footstep.rpc_id(1, map_name, kind, surface, water, season)
+
+func request_ping(map_name: String, position: Vector3) -> void:
+	if not is_online() or not Protocol.is_valid_scene(map_name) or not position.is_finite():
+		return
+	if multiplayer.is_server():
+		if _allow_action(1, "ping", 0.67):
+			ping_requested.emit(1, map_name, position)
+	else:
+		_request_ping.rpc_id(1, map_name, position)
+
+func publish_ping(raw_value: Dictionary) -> void:
+	if not multiplayer.is_server():
+		return
+	var value := Protocol.sanitize_ping(raw_value)
+	if not Protocol.is_valid_ping(value) or not roster.has(int(value.peer)):
+		return
+	_receive_ping.rpc(value)
+	ping_received.emit(value.duplicate(true))
 
 func _relay_footstep(peer_id: int, map_name: String, kind: int, surface: String, water: bool, season: int) -> void:
 	if not multiplayer.is_server() or not roster.has(peer_id):
@@ -1029,6 +1052,22 @@ func _receive_footstep(peer_id: int, map_name: String, kind: int, surface: Strin
 		return
 	if Protocol.is_valid_footstep(map_name, kind, surface, water, season):
 		footstep_received.emit(peer_id, map_name, kind, surface, water, season)
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _request_ping(map_name: String, position: Vector3) -> void:
+	if not multiplayer.is_server() or not Protocol.is_valid_scene(map_name) or not position.is_finite():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if _allow_action(sender, "ping", 0.67):
+		ping_requested.emit(sender, map_name, position)
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _receive_ping(raw_value: Dictionary) -> void:
+	if multiplayer.is_server():
+		return
+	var value := Protocol.sanitize_ping(raw_value)
+	if Protocol.is_valid_ping(value) and roster.has(int(value.peer)):
+		ping_received.emit(value)
 
 func _allow_action(peer_id: int, action: String, per_second: float) -> bool:
 	if not _handshaken.has(peer_id):

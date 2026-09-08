@@ -1,7 +1,7 @@
 extends RefCounted
 
-const PROTOCOL_VERSION := 19
-const MOD_VERSION := "0.4.19"
+const PROTOCOL_VERSION := 20
+const MOD_VERSION := "0.5.0"
 
 static func public_title() -> String:
 	var manifest := ConfigFile.new()
@@ -25,6 +25,8 @@ const MAX_LOOT_ENTITIES := 256
 const MAX_DAMAGE := 250.0
 const MAX_COMBAT_DISTANCE := 300.0
 const REVIVE_DISTANCE := 3.0
+const PING_DISTANCE := 150.0
+const PING_LIFETIME_MS := 12000
 const MELEE_DISTANCE := 3.5
 const MELEE_DAMAGE := 25.0
 const EXPLOSION_DAMAGE := 40.0
@@ -214,6 +216,35 @@ static func is_valid_player_state(raw: Variant) -> bool:
 	if (typeof(value.health) != TYPE_FLOAT and typeof(value.health) != TYPE_INT) or not is_finite(float(value.health)):
 		return false
 	if float(value.health) < 0.0 or float(value.health) > 100.0 or typeof(value.downed) != TYPE_BOOL:
+		return false
+	if typeof(value.map) != TYPE_STRING or not is_valid_scene(String(value.map)):
+		return false
+	return typeof(value.position) == TYPE_VECTOR3 and Vector3(value.position).is_finite()
+
+static func sanitize_ping(raw: Variant) -> Dictionary:
+	if typeof(raw) != TYPE_DICTIONARY:
+		return {}
+	var value: Dictionary = raw
+	if typeof(value.get("peer", null)) != TYPE_INT or typeof(value.get("serial", null)) != TYPE_INT:
+		return {}
+	if typeof(value.get("map", null)) != TYPE_STRING or typeof(value.get("position", null)) != TYPE_VECTOR3:
+		return {}
+	return {
+		"peer": int(value.peer),
+		"serial": int(value.serial),
+		"map": sanitize_map(String(value.map)),
+		"position": Vector3(value.position),
+	}
+
+static func is_valid_ping(raw: Variant) -> bool:
+	if typeof(raw) != TYPE_DICTIONARY:
+		return false
+	var value: Dictionary = raw
+	if not value.has_all(["peer", "serial", "map", "position"]):
+		return false
+	if typeof(value.peer) != TYPE_INT or int(value.peer) <= 0:
+		return false
+	if typeof(value.serial) != TYPE_INT or int(value.serial) < 0:
 		return false
 	if typeof(value.map) != TYPE_STRING or not is_valid_scene(String(value.map)):
 		return false

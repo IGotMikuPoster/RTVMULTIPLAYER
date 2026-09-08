@@ -11,35 +11,93 @@ var deadline := 0
 var was_frozen := false
 var settings: Node
 var committed := false
-var dialog: ConfirmationDialog
+var dialog: CanvasLayer
 var dialog_frozen := false
 var last_save_error := ""
+var bound_buttons: Dictionary = {}
 const SAVE_RECORD := "user://rtv_coop_8/menu_save.cfg"
 
 func register_hooks(value: Variant) -> void:
 	library = value
-	library.hook("settings-_ready-post", _settings_ready, 90)
-	library.hook("settings-_on_menu_pressed", _menu_pressed, 90)
-	library.hook("settings-_on_exit_menu_pressed", _confirm_pressed, 90)
 	library.hook("loader-saveshelter-post", _shelter_saved, 800)
 
-func _settings_ready() -> void:
-	settings = library._caller
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	get_tree().node_added.connect(_node_added)
+	call_deferred("_find_settings")
 
-func _menu_pressed() -> void:
-	if session.is_online():
-		library.skip_super()
-		if session.multiplayer.is_server():
-			show_confirmation()
-		else:
-			api.show_gameplay_status("Only the host can return the group to the main menu", true)
+func _exit_tree() -> void:
+	_restore_buttons()
+	if get_tree().node_added.is_connected(_node_added):
+		get_tree().node_added.disconnect(_node_added)
 
-func _confirm_pressed() -> void:
+func _node_added(node: Node) -> void:
+	if _is_settings(node):
+		call_deferred("bind_settings", node)
+
+func _is_settings(node: Node) -> bool:
+	var script := node.get_script() as Script
+	return script != null and script.resource_path == "res://Scripts/Settings.gd"
+
+func _find_settings() -> void:
 	if not session.is_online():
 		return
-	library.skip_super()
-	if session.multiplayer.is_server():
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	if _is_settings(scene):
+		bind_settings(scene)
+		return
+	for node in scene.find_children("*", "", true, false):
+		if _is_settings(node):
+			bind_settings(node)
+			return
+
+func bind_settings(node: Node) -> void:
+	if not is_instance_valid(node) or not session.is_online():
+		return
+	settings = node
+	for field in ["menu", "exitMenu"]:
+		var button := settings.get(field) as Button
+		if button == null or bound_buttons.has(button):
+			continue
+		var removed: Array = []
+		for connection in button.pressed.get_connections():
+			var callback: Callable = connection.callable
+			if callback.get_object() == settings and String(callback.get_method()) in ["_on_menu_pressed", "_on_exit_menu_pressed", "_rtv_vanilla__on_menu_pressed", "_rtv_vanilla__on_exit_menu_pressed"]:
+				removed.append(connection)
+				button.pressed.disconnect(callback)
+		bound_buttons[button] = removed
+		button.pressed.connect(_button_pressed)
+
+func _settings_fully_bound() -> bool:
+	if not is_instance_valid(settings):
+		return false
+	for field in ["menu", "exitMenu"]:
+		var button := settings.get(field) as Button
+		if button == null or not bound_buttons.has(button) or not button.pressed.is_connected(_button_pressed):
+			return false
+	return true
+
+func _button_pressed() -> void:
+	if session.is_online() and session.multiplayer.is_server():
 		show_confirmation()
+
+func _restore_buttons() -> void:
+	for button in bound_buttons:
+		if not is_instance_valid(button): continue
+		if button.pressed.is_connected(_button_pressed):
+			button.pressed.disconnect(_button_pressed)
+		for connection in bound_buttons[button]:
+			var callback: Callable = connection.callable
+			if callback.is_valid() and not button.pressed.is_connected(callback):
+				button.pressed.connect(callback, int(connection.flags))
+		if button.has_meta("coop_menu_original"):
+			var original: Array = button.get_meta("coop_menu_original")
+			button.disabled = bool(original[0])
+			button.tooltip_text = String(original[1])
+			button.remove_meta("coop_menu_original")
+	bound_buttons.clear()
 
 static func elapsed_text(seconds: int) -> String:
 	return "%d min %02d seconds ago" % [maxi(seconds, 0) / 60, maxi(seconds, 0) % 60]
@@ -81,10 +139,7 @@ func show_confirmation() -> void:
 	if pending or (is_instance_valid(dialog) and dialog.visible):
 		return
 	if not is_instance_valid(dialog):
-		dialog = ConfirmationDialog.new()
-		dialog.title = "Return group to main menu?"
-		dialog.ok_button_text = "Continue to Main Menu"
-		dialog.cancel_button_text = "Cancel"
+		dialog = preload("res://RTVCoop8/ui/MenuReturnPanel.gd").new()
 		add_child(dialog)
 		dialog.confirmed.connect(func():
 			api._game_data.set("freeze", dialog_frozen or api._local_downed)
@@ -92,10 +147,19 @@ func show_confirmation() -> void:
 		dialog.canceled.connect(func(): api._game_data.set("freeze", dialog_frozen or api._local_downed))
 	dialog_frozen = bool(api._game_data.get("freeze"))
 	api._game_data.set("freeze", true)
-	dialog.dialog_text = confirmation_text()
-	dialog.popup_centered(Vector2i(560, 280))
+	dialog.show_text(confirmation_text())
 
 func _process(_delta: float) -> void:
+	if session.is_online():
+		if is_instance_valid(settings) and not _settings_fully_bound():
+			bind_settings(settings)
+		if not _settings_fully_bound():
+			_find_settings()
+	else:
+		_restore_buttons()
+		settings = null
+	if is_instance_valid(dialog) and dialog.visible and (not session.is_online() or api.scene_is_loading()):
+		dialog.cancel()
 	if not session.is_online():
 		token = 0
 	if is_instance_valid(settings):
@@ -198,6 +262,8 @@ func _commit(value: int) -> void:
 	if not pending or committed or value != token:
 		return
 	committed = true
+	if api.has_method("cancel_group_pause"):
+		api.call("cancel_group_pause")
 	var loader := get_node("/root/Loader")
 	var data: Resource = api._game_data
 	var policy := save_policy(bool(data.get("shelter")), bool(data.get("tutorial")))

@@ -12,6 +12,8 @@ const RemotePlayerScript = preload("res://RTVCoop8/presentation/RemotePlayer.gd"
 const GameplaySyncScript = preload("res://RTVCoop8/gameplay/GameplaySync.gd")
 const TravelVoteScript = preload("res://RTVCoop8/core/TravelVote.gd")
 const RunState = preload("res://RTVCoop8/gameplay/RunState.gd")
+const CoopPause = preload("res://RTVCoop8/core/CoopPause.gd")
+const SquadToolsScript = preload("res://RTVCoop8/gameplay/SquadTools.gd")
 
 var _library: Variant
 var _capabilities := CapabilityRegistryScript.new()
@@ -71,9 +73,14 @@ var _restore_profile_on_join := true
 var _checkpoint_pending := false
 var _checkpoint_retry_at := 0
 var _group_sleep: Node
+var _group_pause: Node
 var _shelter: Node
 var _travel_commit_pending := false
 var _return_menu: Node
+var _squad: Node
+var _coop_unpaused_settings := false
+var _coop_group_paused := false
+var _squad_ui_accumulator := 0.0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -100,6 +107,10 @@ func _ready() -> void:
 	_gameplay.name = "GameplaySync"
 	add_child(_gameplay)
 	_gameplay.configure(_session, self)
+	_squad = SquadToolsScript.new()
+	_squad.name = "SquadTools"
+	add_child(_squad)
+	_squad.configure(_session, self)
 	_return_menu = preload("res://RTVCoop8/gameplay/ReturnToMenu.gd").new()
 	_return_menu.name = "ReturnToMenu"
 	_return_menu.api = self
@@ -115,6 +126,10 @@ func _ready() -> void:
 	_group_sleep.session = _session
 	_group_sleep.api = self
 	add_child(_group_sleep)
+	_group_pause = preload("res://RTVCoop8/gameplay/GroupPause.gd").new()
+	_group_pause.name = "GroupPause"
+	add_child(_group_pause)
+	_group_pause.configure(_session, self)
 	_shelter = preload("res://RTVCoop8/gameplay/ShelterSync.gd").new()
 	_shelter.name = "ShelterSync"
 	_shelter.session = _session
@@ -179,6 +194,7 @@ func session_state() -> Dictionary:
 	}
 
 func _process(delta: float) -> void:
+	_reconcile_coop_pause()
 	if _downed_screen != null:
 		_downed_screen.visible = _local_downed and _session.is_online() and not _ending_run
 	if Input.is_key_pressed(KEY_F10) and not bool(get_meta("f10_down", false)):
@@ -192,6 +208,10 @@ func _process(delta: float) -> void:
 		return
 	if not _session.is_online():
 		return
+	_squad_ui_accumulator += delta
+	if _squad_ui_accumulator >= 0.5:
+		_squad_ui_accumulator = fmod(_squad_ui_accumulator, 0.5)
+		_refresh_squad_ui()
 	if _return_menu != null and _return_menu.pending:
 		return
 	if _checkpoint_pending and Time.get_ticks_msec() >= _checkpoint_retry_at and _local_player != null and not _gameplay.has_pending_transfers():
@@ -509,7 +529,7 @@ func _on_roster_changed(new_roster: Dictionary) -> void:
 		_release_travel_freeze()
 		if _travel_label != null:
 			_travel_label.hide()
-	_panel.set_roster(new_roster)
+	_refresh_squad_ui()
 	_panel.set_online(_session.is_online())
 	for raw_peer_id in _remote_players.keys():
 		var peer_id := int(raw_peer_id)
@@ -908,7 +928,46 @@ func _build_hud() -> void:
 func _update_hud() -> void:
 	if _hud == null or _session == null:
 		return
-	_hud.text = "Multiplayer: %d/%d (%s)" % [_session.peer_count(), Protocol.MAX_PLAYERS, _state_label(_session.state).capitalize()]
+	var suffix := ""
+	if _session.is_online():
+		var downed := 0
+		for raw_peer_id in _session.roster.keys():
+			var state: Dictionary = _session.authoritative_player_state(int(raw_peer_id))
+			if bool(state.get("downed", false)):
+				downed += 1
+		if downed > 0:
+			suffix += " • Down %d" % downed
+		var grace_ms := _revive_grace_until - Time.get_ticks_msec()
+		if grace_ms > 0:
+			suffix += " • Grace %ds" % int(ceil(grace_ms / 1000.0))
+	_hud.text = "Multiplayer: %d/%d (%s)%s" % [_session.peer_count(), Protocol.MAX_PLAYERS, _state_label(_session.state).capitalize(), suffix]
+
+func _refresh_squad_ui() -> void:
+	if _panel == null or _session == null:
+		return
+	var states: Dictionary = {}
+	for raw_peer_id in _session.roster.keys():
+		var peer_id := int(raw_peer_id)
+		states[peer_id] = _session.authoritative_player_state(peer_id)
+	_panel.set_roster(_session.roster, states, current_map_name())
+	_update_hud()
+
+func _reconcile_coop_pause() -> void:
+	if _session == null:
+		return
+	if _game_data == null:
+		_game_data = load("res://Resources/GameData.tres")
+	var settings_open := _game_data != null and bool(_game_data.get("settings"))
+	var group_active := _group_pause != null and bool(_group_pause.get("active"))
+	var result := CoopPause.reconcile(get_tree().paused, _session.is_online(), settings_open, _coop_unpaused_settings, group_active, _coop_group_paused)
+	if get_tree().paused != bool(result.paused):
+		get_tree().paused = bool(result.paused)
+	_coop_unpaused_settings = bool(result.forced)
+	_coop_group_paused = bool(result.group_forced)
+
+func cancel_group_pause() -> void:
+	if _group_pause != null:
+		_group_pause.cancel_group()
 
 func _state_label(value: int) -> String:
 	match value:
@@ -1008,10 +1067,14 @@ func _prepare_scene_load(scene: String) -> void:
 	_clear_remote_players()
 	_local_player = null
 	_gameplay.reset_scene()
+	if _squad != null:
+		_squad.reset_scene()
 	if _traders != null:
 		_traders.reset_scene()
 	if _group_sleep != null:
 		_group_sleep.cancel_group()
+	if _group_pause != null:
+		_group_pause.cancel_group()
 	if _shelter != null:
 		_shelter.reset_scene()
 	print("[RTVCoop8] Loading scene: %s" % scene)

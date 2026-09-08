@@ -54,6 +54,9 @@ func show_panel() -> void:
 func hide_panel() -> void:
 	if not _backdrop.visible:
 		return
+	var focus := get_viewport().gui_get_focus_owner()
+	if focus != null and _backdrop.is_ancestor_of(focus):
+		focus.release_focus()
 	_backdrop.visible = false
 	Input.set_mouse_mode(_previous_mouse_mode)
 
@@ -68,14 +71,23 @@ func set_steam_status(text: String, ready: bool) -> void:
 	_steam_host_button.disabled = _online or not ready
 	_steam_join_button.disabled = _online or not ready
 
-func set_roster(entries: Dictionary) -> void:
+func set_roster(entries: Dictionary, states := {}, local_map := "") -> void:
 	_roster.text = "%d / %d\n" % [entries.size(), Protocol.MAX_PLAYERS]
 	var ids := entries.keys()
 	ids.sort()
 	for peer_id in ids:
 		var entry: Dictionary = entries[peer_id]
 		var host_marker := " (host)" if int(peer_id) == 1 else ""
-		_roster.text += "%s%s  [%d]\n" % [String(entry.get("name", "Player")), host_marker, int(peer_id)]
+		var state: Dictionary = states.get(peer_id, {}) if states is Dictionary else {}
+		var detail := ""
+		if not state.is_empty():
+			var location := "here" if not local_map.is_empty() and String(state.get("map", "")) == local_map else String(state.get("map", ""))
+			if location.is_empty():
+				location = "loading"
+			detail = "downed • %s" % location if bool(state.get("downed", false)) else "%d HP • %s" % [int(round(float(state.get("health", 100.0)))), location]
+		_roster.text += "%s%s\n" % [String(entry.get("name", "Player")), host_marker]
+		if not detail.is_empty():
+			_roster.text += "  %s\n" % detail
 
 func set_friends(entries: Array) -> void:
 	for child in _friends_box.get_children():
