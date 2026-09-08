@@ -174,7 +174,7 @@ func dispatch(req request) response {
 		mm := sw.SteamMatchmaking()
 		mm.SetLobbyData(currentLobby, "rtv_coop", "1")
 		mm.SetLobbyData(currentLobby, "protocol", "2")
-		mm.SetLobbyData(currentLobby, "mod_version", "0.5.0")
+		mm.SetLobbyData(currentLobby, "mod_version", "0.5.1")
 		mm.SetLobbyData(currentLobby, "host_steam_id", strconv.FormatUint(uint64(sw.SteamUser().GetSteamID()), 10))
 		return ok(lobbyDetails(currentLobby))
 	case "join_lobby":
